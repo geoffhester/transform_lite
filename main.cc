@@ -52,17 +52,17 @@ RuntimeFrameName operator"" _frame(char const* name, std::size_t) {
 namespace detail {
 
 template <typename T>
-struct is_runtime_frame : std::false_type {};
+struct is_runtime_frame_name : std::false_type {};
 
-template <template <typename> class T>
-struct is_runtime_frame<T<RuntimeFrameName>> : std::true_type {};
+template <>
+struct is_runtime_frame_name<RuntimeFrameName> : std::true_type {};
 
 }  // namespace detail
 
 template <typename T>
-struct is_runtime_frame {
+struct is_runtime_frame_name {
   static constexpr bool const value =
-      detail::is_runtime_frame<std::decay_t<T>>::value;
+      detail::is_runtime_frame_name<std::decay_t<T>>::value;
 };
 
 //------------------------------------------------------------------------------
@@ -86,10 +86,21 @@ struct LocalFrame {
   NameType name_;
   FrameTimestamp timestamp_;
 
-  template <bool Enabled = true>
-  LocalFrame(FrameTimestamp const& timestamp,
-             typename std::enable_if<!is_runtime_frame<NameType>::value &&
-                                     Enabled>::type* = nullptr)
+  // The SFINAE trick here is because you cannot enable_if on the a class type.
+  // This is because NameType is seen and all the functions are stamped out at
+  // that point. It will then fail to get a 'type' and say enbale_if cannot be
+  // used. The trick is to add a single layer of indirection by having
+  // SFINAENameType the a default of NameType. In general users should never
+  // specify function template types, but in the case of constructors they
+  // cannot. It's a compiler error. However, by adding the indirection, the
+  // compilre waits until the point where the constructor is called to realise
+  // that it is going to use the default argument. From here enable_if works as
+  // always.
+  template <typename SFINAENameType = NameType>
+  LocalFrame(
+      FrameTimestamp const& timestamp,
+      typename std::enable_if<
+          !is_runtime_frame_name<SFINAENameType>::value>::type* = nullptr)
       : name_(NameType()), timestamp_(timestamp) {}
 
   LocalFrame(NameType const& name, FrameTimestamp const& timestamp)
@@ -108,13 +119,16 @@ std::ostream& operator<<(std::ostream& os, LocalFrame<NameType> const& f) {
   return os;
 }
 
+//------------------------------------------------------------------------------
+
 template <typename NameType>
 struct ExternalFrame {
   using FrameNameType = NameType;
 
-  template <bool Enabled = true>
-  ExternalFrame(typename std::enable_if<!is_runtime_frame<NameType>::value &&
-                                        Enabled>::type* = nullptr)
+  template <typename SFINAENameType = NameType>
+  ExternalFrame(
+      typename std::enable_if<
+          !is_runtime_frame_name<SFINAENameType>::value>::type* = nullptr)
       : name_(NameType()) {}
 
   ExternalFrame(NameType name) : name_(std::move(name)) {}
@@ -132,15 +146,18 @@ std::ostream& operator<<(std::ostream& os, ExternalFrame<NameType> const& f) {
   return os;
 }
 
+//------------------------------------------------------------------------------
+
 template <typename NameType>
 struct CalibrationFrame {
   using FrameNameType = NameType;
 
   NameType name_;
 
-  template <bool Enabled = true>
-  CalibrationFrame(typename std::enable_if<!is_runtime_frame<NameType>::value &&
-                                           Enabled>::type* = nullptr)
+  template <typename SFINAENameType = NameType>
+  CalibrationFrame(
+      typename std::enable_if<
+          !is_runtime_frame_name<SFINAENameType>::value>::type* = nullptr)
       : name_(NameType()) {}
 
   CalibrationFrame(NameType name) : name_(std::move(name)) {}
@@ -157,6 +174,9 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
+//------------------------------------------------------------------------------
+
+// Implementation of frame traits.
 namespace detail {
 
 template <typename T>
@@ -214,7 +234,17 @@ struct is_calibration_frame {
       detail::is_calibration_frame<std::decay_t<T>>::value;
 };
 
+template <typename T>
+struct is_runtime_frame {
+  static constexpr bool const value =
+      is_runtime_frame_name<std::decay_t<typename T::FrameNameType>>::value;
+};
+
+//------------------------------------------------------------------------------
+
+// Implementation of frame matching
 namespace detail {
+
 // Perform compile time frame checking if possible
 template <typename L, typename R>
 constexpr bool CheckFramesMatch(L const& l, R const& r) {
@@ -229,7 +259,7 @@ constexpr bool CheckFramesMatch(L const& l, R const& r) {
 template <typename L, typename R>
 struct FramesMatchImpl {
   constexpr bool operator()(L const& l, R const& r) {
-    return CheckFramesMatch(l,r);
+    return CheckFramesMatch(l, r);
   }
 };
 
@@ -238,10 +268,11 @@ template <typename LFrameTag, typename RFrameTag>
 struct FramesMatchImpl<LocalFrame<LFrameTag>, LocalFrame<RFrameTag>> {
   constexpr bool operator()(LocalFrame<LFrameTag> const& l,
                             LocalFrame<RFrameTag> const& r) {
-    return l.timestamp_ == r.timestamp_ && CheckFramesMatch(l,r);
+    return l.timestamp_ == r.timestamp_ && CheckFramesMatch(l, r);
   }
 };
-} // namespace detail
+
+}  // namespace detail
 
 template <typename L, typename R>
 constexpr bool FramesMatch(L const& l, R const& r) {
@@ -288,7 +319,27 @@ struct Transform {
                                     !is_local_frame<SrcFrame>::value &&
                                     Enabled>::type* x = nullptr)
       : Transform(DestFrame(), SrcFrame()) {}
+
+  template <typename SFINAEDestFrame = DestFrame,
+            typename SFINAESrcFrame = SrcFrame>
+  Transform(
+      RuntimeFrameName dest_frame_name, FrameTimestamp dest_frame_timestamp,
+      RuntimeFrameName src_frame_name, FrameTimestamp src_frame_timestamp,
+      typename std::enable_if<is_runtime_frame<SFINAEDestFrame>::value &&
+                              is_runtime_frame<SFINAESrcFrame>::value>::type* =
+          nullptr)
+      : Transform(RuntimeLocalFrame(dest_frame_name, dest_frame_timestamp),
+                  RuntimeLocalFrame(src_frame_name, src_frame_timestamp)) {}
 };
+
+template <typename DestFrame, typename SrcFrame>
+std::ostream& operator<<(std::ostream& os,
+                         Transform<DestFrame, SrcFrame> const& t) {
+  os << "G_{" << t.dest_frame_ << "," << t.src_frame_ << "}";
+  return os;
+}
+
+//------------------------------------------------------------------------------
 
 template <typename DestFrame, typename SrcFrame>
 Transform<DestFrame, SrcFrame> MakeTransform(DestFrame dest, SrcFrame src) {
@@ -332,12 +383,10 @@ Transform<LocalFrame<FrameName>, LocalFrame<FrameName>> MakeRelativeTransform(
       LocalFrame<FrameName>(dest_time), LocalFrame<FrameName>(src_time));
 }
 
-template <typename DestFrame, typename SrcFrame>
-std::ostream& operator<<(std::ostream& os,
-                         Transform<DestFrame, SrcFrame> const& t) {
-  os << "G_{" << t.dest_frame_ << "," << t.src_frame_ << "}";
-  return os;
-}
+//------------------------------------------------------------------------------
+
+// Implementation of transform composition
+namespace detail {
 
 template <typename LDestFrame, typename LSrcFrame, typename RDestFrame,
           typename RSrcFrame>
@@ -400,20 +449,26 @@ struct TransformComposition<LDestFrame<LDestTag>, LocalFrame<LSrcTag>,
   }
 };
 
+}  // namespace detail
+
+//------------------------------------------------------------------------------
+
 template <typename LDestFrame, typename LSrcFrame, typename RDestFrame,
           typename RSrcFrame>
 auto operator*(Transform<LDestFrame, LSrcFrame> const& l,
                Transform<RDestFrame, RSrcFrame> const& r) ->
-    typename TransformComposition<LDestFrame, LSrcFrame, RDestFrame,
-                                  RSrcFrame>::ResultType {
+    typename detail::TransformComposition<LDestFrame, LSrcFrame, RDestFrame,
+                                          RSrcFrame>::ResultType {
   if (!FramesMatch(l.src_frame_, r.dest_frame_)) {
     std::stringstream ss;
     ss << "Error composing " << l << " and " << r;
     throw ss.str();
   }
-  return TransformComposition<LDestFrame, LSrcFrame, RDestFrame, RSrcFrame>()(
-      l, r);
+  return detail::TransformComposition<LDestFrame, LSrcFrame, RDestFrame,
+                                      RSrcFrame>()(l, r);
 }
+
+//------------------------------------------------------------------------------
 
 template <typename DestFrame, typename SrcFrame>
 auto Invert(Transform<DestFrame, SrcFrame> const& G_dest_src) {
@@ -423,6 +478,7 @@ auto Invert(Transform<DestFrame, SrcFrame> const& G_dest_src) {
 
 //------------------------------------------------------------------------------
 
+// Define some compile time frames.
 using WorldFrame = FrameName<struct WorldFrameTag>;
 template <>
 std::string const WorldFrame::name{"world"};
@@ -444,6 +500,7 @@ using LaserFrame = FrameName<struct LaserFrameTag>;
 template <>
 std::string const LaserFrame::name{"laser"};
 
+// Helper functions for demo output
 template <typename T1, typename T2>
 void PrintTransformComposition(T1 const& t1, T2 const& t2) {
   std::cout << t1 << " * " << t2 << " = " << t1 * t2 << " and has type "
@@ -460,14 +517,13 @@ void PrintTransformComposition(T1 const& t1, T2 const& t2, T3 const& t3) {
 }
 
 int main(int argc, const char* argv[]) {
-
   auto G_robot_camera_calibration =
       MakeCalibrationTransform<RobotFrame, CameraFrame>();
   auto G_laser_robot_calibration =
       MakeCalibrationTransform<LaserFrame, RobotFrame>();
   // ERROR enable_if removes this constructor if using runtime frames
-//MakeCalibrationTransform<RuntimeCalibrationFrame, RobotCalibrationFrame>();
-  
+  // MakeCalibrationTransform<RuntimeCalibrationFrame, RobotCalibrationFrame>();
+
   // Compose two calibration transforms
   PrintTransformComposition(G_laser_robot_calibration,
                             G_robot_camera_calibration);
@@ -505,7 +561,7 @@ int main(int argc, const char* argv[]) {
   // type for the same frame string, however, we can remove the heavy syntax
   // using the _frame suffix, shown for the second parameter.
   auto G_robot_ins_calibration =
-  MakeCalibrationTransform(RuntimeFrameName{"robot"}, "ins"_frame);
+      MakeCalibrationTransform(RuntimeFrameName{"robot"}, "ins"_frame);
   // Compose a transform with runtime frames and one with compile time tag.
   PrintTransformComposition(G_laser_robot_calibration, G_robot_ins_calibration);
 
@@ -514,14 +570,15 @@ int main(int argc, const char* argv[]) {
 
   // Compisition of bad frame names, checked at runtime.
   try {
-    G_robot_ins_calibration* G_laser_robot_calibration;
+    PrintTransformComposition(G_robot_ins_calibration,
+                              G_laser_robot_calibration);
   } catch (std::string& ex) {
     std::cout << ex << std::endl;
   }
 
   // Composition of bad frame timestamps, matching names.
   try {
-    G_robot_t2_robot_t3* G_robot_t1_robot_t2;
+    PrintTransformComposition(G_robot_t2_robot_t3, G_robot_t1_robot_t2);
   } catch (std::string& ex) {
     std::cout << ex << std::endl;
   }
@@ -531,12 +588,26 @@ int main(int argc, const char* argv[]) {
                                       RuntimeLocalFrame("ins"_frame, 3_ft));
   PrintTransformComposition(G_world_ins_t3, Invert(G_robot_ins_calibration));
 
+  try {
+    // Show the use of enable_if constructor for building runtime transform.
+    using LeafTransform = Transform<RuntimeLocalFrame, RuntimeLocalFrame>;
+    auto G_robot_t1_robot_t3 =
+        LeafTransform("robot"_frame, 1_ft, "robot"_frame, 3_ft);
+    // Show we can compose runtime and compiletime frames.
+    PrintTransformComposition(G_robot_t1_robot_t3, G_robot_t3_robot_t4);
+
+    // Now show this will error at runtime.
+    PrintTransformComposition(G_robot_t1_robot_t3, G_laser_robot_calibration);
+  } catch (std::string& ex) {
+    std::cout << ex << std::endl;
+  }
+
   // ERROR Cannot create a transform where one frame is Calibration and the
   // other is not.
-//  Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
-//      RuntimeCalibrationFrame("robot"_frame),
-//      RuntimeLocalFrame("laser"_frame,1_ft));
-  
+  //  Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
+  //      RuntimeCalibrationFrame("robot"_frame),
+  //      RuntimeLocalFrame("laser"_frame,1_ft));
+
   // Cannot apply calibration transform to a world frame.
   // NOTE A frame name does not encode the frame type to which it will be
   // applied (as this can be any of the three types). To prevent this at compile
@@ -545,10 +616,15 @@ int main(int argc, const char* argv[]) {
   // badly. I gave up. Whilst you can create this transform, as soon as you try
   // and compose it with anything which isn't a calibration transform it will go
   // bang.
-//  auto G_robot_world_calibration =
-//      MakeCalibrationTransform<RobotFrame, WorldFrame>();
-//  G_robot_world_calibration* G_world_ins_t3;  // ERROR
+  //  auto G_robot_world_calibration =
+  //      MakeCalibrationTransform<RobotFrame, WorldFrame>();
+  //  G_robot_world_calibration* G_world_ins_t3;  // ERROR
 
+  // Disabled through enable_if
+  //  auto runtime_local_frame = RuntimeLocalFrame{3_ft};
+  //  auto runtime_external_frame = RuntimeExternalFrame{};
+  //  RuntimeExternalFrame runtime_external_frame2;
+  //  auto runtime_calibration_frame = RuntimeCalibrationFrame{};
 
   return 0;
 }
