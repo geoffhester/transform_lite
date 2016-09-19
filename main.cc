@@ -101,7 +101,7 @@ struct LocalFrame {
       FrameTimestamp const& timestamp,
       typename std::enable_if<
           !is_runtime_frame_name<SFINAENameType>::value>::type* = nullptr)
-      : name_(NameType()), timestamp_(timestamp) {}
+      : LocalFrame(NameType(),timestamp) {}
 
   LocalFrame(NameType const& name, FrameTimestamp const& timestamp)
       : name_(name), timestamp_(timestamp) {}
@@ -604,9 +604,9 @@ int main(int argc, const char* argv[]) {
 
   // ERROR Cannot create a transform where one frame is Calibration and the
   // other is not.
-  //  Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
-  //      RuntimeCalibrationFrame("robot"_frame),
-  //      RuntimeLocalFrame("laser"_frame,1_ft));
+//    Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
+//        RuntimeCalibrationFrame("robot"_frame),
+//        RuntimeLocalFrame("laser"_frame,1_ft));
 
   // Cannot apply calibration transform to a world frame.
   // NOTE A frame name does not encode the frame type to which it will be
@@ -616,15 +616,15 @@ int main(int argc, const char* argv[]) {
   // badly. I gave up. Whilst you can create this transform, as soon as you try
   // and compose it with anything which isn't a calibration transform it will go
   // bang.
-  //  auto G_robot_world_calibration =
-  //      MakeCalibrationTransform<RobotFrame, WorldFrame>();
-  //  G_robot_world_calibration* G_world_ins_t3;  // ERROR
+//    auto G_robot_world_calibration =
+//        MakeCalibrationTransform<RobotFrame, WorldFrame>();
+//    G_robot_world_calibration* G_world_ins_t3;  // ERROR
 
   // Disabled through enable_if
-  //  auto runtime_local_frame = RuntimeLocalFrame{3_ft};
-  //  auto runtime_external_frame = RuntimeExternalFrame{};
-  //  RuntimeExternalFrame runtime_external_frame2;
-  //  auto runtime_calibration_frame = RuntimeCalibrationFrame{};
+//    auto runtime_local_frame = RuntimeLocalFrame{3_ft};
+//    auto runtime_external_frame = RuntimeExternalFrame{};
+//    RuntimeExternalFrame runtime_external_frame2;
+//    auto runtime_calibration_frame = RuntimeCalibrationFrame{};
 
   return 0;
 }
