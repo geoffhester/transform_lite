@@ -1,8 +1,12 @@
-#include <boost/type_index.hpp>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <type_traits>
+
+#include <boost/type_index.hpp>
+#include <boost/utility/string_view.hpp>
+
+#include "constexpr_string.h"
 
 // Frame timestamp is just an int (POD)
 struct FrameTimestamp {
@@ -34,8 +38,23 @@ bool operator!=(FrameTimestamp const& l, FrameTimestamp const& r) {
 // member by doing a using with a tag struct.
 template <typename Tag>
 struct FrameName {
-  static std::string const name;
+  //using TagType = Tag;
+  //static std::string const name;
+  //static constexpr constexpr_string name;
 };
+
+// I had to use a macro. This will define a template speicialisation for the
+// a frame known at compilte time. Provde the name you want a type alias to be
+// created for and a string
+#define DEFINE_FRAME_NAME(FN, string_n)                \
+  struct FN##Tag {};                                   \
+  template <>                                          \
+  struct FrameName<FN##Tag> {                          \
+    using TagType = FN##Tag;                           \
+    static constexpr constexpr_string name{#string_n}; \
+  };                                                   \
+  constexpr constexpr_string FrameName<FN##Tag>::name; \
+  using FN = FrameName<FN##Tag>;
 
 // Frame which can be set at runtime
 struct RuntimeFrameName {
@@ -60,10 +79,8 @@ struct is_runtime_frame_name<RuntimeFrameName> : std::true_type {};
 }  // namespace detail
 
 template <typename T>
-struct is_runtime_frame_name {
-  static constexpr bool const value =
-      detail::is_runtime_frame_name<std::decay_t<T>>::value;
-};
+struct is_runtime_frame_name
+    : detail::is_runtime_frame_name<std::remove_cv_t<T>> {};
 
 //------------------------------------------------------------------------------
 
@@ -101,14 +118,14 @@ struct LocalFrame {
       FrameTimestamp const& timestamp,
       typename std::enable_if<
           !is_runtime_frame_name<SFINAENameType>::value>::type* = nullptr)
-      : LocalFrame(NameType(),timestamp) {}
+      : LocalFrame(NameType(), timestamp) {}
 
   LocalFrame(NameType const& name, FrameTimestamp const& timestamp)
       : name_(name), timestamp_(timestamp) {}
 
-  std::string const& name() const { return name_.name; }
+  boost::string_view name() const { return static_cast<boost::string_view>(name_.name); }
 
-  FrameTimestamp const& timestamp() const { return timestamp_; }
+  constexpr FrameTimestamp const& timestamp() const { return timestamp_; }
 };
 
 using RuntimeLocalFrame = LocalFrame<RuntimeFrameName>;
@@ -135,7 +152,7 @@ struct ExternalFrame {
 
   NameType name_;
 
-  std::string const& name() const { return name_.name; }
+  boost::string_view name() const { return static_cast<boost::string_view>(name_.name); }
 };
 
 using RuntimeExternalFrame = ExternalFrame<RuntimeFrameName>;
@@ -162,7 +179,7 @@ struct CalibrationFrame {
 
   CalibrationFrame(NameType name) : name_(std::move(name)) {}
 
-  std::string const& name() const { return name_.name; }
+  boost::string_view name() const { return static_cast<boost::string_view>(name_.name); }
 };
 
 using RuntimeCalibrationFrame = CalibrationFrame<RuntimeFrameName>;
@@ -180,104 +197,156 @@ std::ostream& operator<<(std::ostream& os,
 namespace detail {
 
 template <typename T>
-struct is_frame : std::false_type {};
-
-template <typename NameType>
-struct is_frame<LocalFrame<NameType>> : std::true_type {};
-
-template <typename NameType>
-struct is_frame<ExternalFrame<NameType>> : std::true_type {};
-
-template <typename NameType>
-struct is_frame<CalibrationFrame<NameType>> : std::true_type {};
+struct is_frame_impl : std::false_type {};
 
 template <typename T>
-struct is_local_frame : std::false_type {};
-
-template <typename NameType>
-struct is_local_frame<LocalFrame<NameType>> : std::true_type {};
+struct is_frame_impl<LocalFrame<T>> : std::true_type {};
 
 template <typename T>
-struct is_world_frame : std::false_type {};
-
-template <typename NameType>
-struct is_world_frame<ExternalFrame<NameType>> : std::true_type {};
+struct is_frame_impl<ExternalFrame<T>> : std::true_type {};
 
 template <typename T>
-struct is_calibration_frame : std::false_type {};
+struct is_frame_impl<CalibrationFrame<T>> : std::true_type {};
 
-template <typename NameType>
-struct is_calibration_frame<CalibrationFrame<NameType>> : std::true_type {};
+template <typename T>
+struct is_local_frame_impl : std::false_type {};
+
+template <typename T>
+struct is_local_frame_impl<LocalFrame<T>> : std::true_type {};
+
+template <typename T>
+struct is_world_frame_impl : std::false_type {};
+
+template <typename T>
+struct is_world_frame_impl<ExternalFrame<T>> : std::true_type {};
+
+template <typename T>
+struct is_calibration_frame_impl : std::false_type {};
+
+template <typename T>
+struct is_calibration_frame_impl<CalibrationFrame<T>> : std::true_type {};
 
 }  // namespace detail
 
 template <typename T>
-struct is_frame {
-  static constexpr bool const value = detail::is_frame<std::decay_t<T>>::value;
-};
+struct is_frame : detail::is_frame_impl<typename std::remove_cv_t<T>> {};
 
 template <typename T>
-struct is_local_frame {
-  static constexpr bool const value =
-      detail::is_local_frame<std::decay_t<T>>::value;
-};
+constexpr bool is_frame_v = is_frame<T>::value;
 
 template <typename T>
-struct is_world_frame {
-  static constexpr bool const value =
-      detail::is_world_frame<std::decay_t<T>>::value;
-};
+struct is_local_frame
+    : detail::is_local_frame_impl<typename std::remove_cv_t<T>> {};
 
 template <typename T>
-struct is_calibration_frame {
-  static constexpr bool const value =
-      detail::is_calibration_frame<std::decay_t<T>>::value;
-};
+constexpr bool is_local_frame_v = is_local_frame<T>::value;
 
 template <typename T>
-struct is_runtime_frame {
-  static constexpr bool const value =
-      is_runtime_frame_name<std::decay_t<typename T::FrameNameType>>::value;
-};
+struct is_world_frame
+    : detail::is_world_frame_impl<typename std::remove_cv_t<T>> {};
+
+template <typename T>
+constexpr bool is_world_frame_v = is_world_frame<T>::value;
+
+template <typename T>
+struct is_calibration_frame
+    : detail::is_calibration_frame_impl<typename std::remove_cv_t<T>> {};
+
+template <typename T>
+constexpr bool is_calibration_frame_v = is_calibration_frame<T>::value;
+
+template <typename T>
+struct is_runtime_frame : is_runtime_frame_name<typename T::FrameNameType> {};
+
+template <typename T>
+constexpr bool is_runtime_frame_v = is_runtime_frame<T>::value;
 
 //------------------------------------------------------------------------------
 
 // Implementation of frame matching
 namespace detail {
 
-// Perform compile time frame checking if possible
 template <typename L, typename R>
-constexpr bool CheckFramesMatch(L const& l, R const& r) {
-  static_assert((is_runtime_frame<L>::value || is_runtime_frame<R>::value ||
-                 std::is_same<typename L::FrameNameType,
-                              typename R::FrameNameType>::value),
-                "Frame mismatch");
-  return l.name() == r.name();
-}
+struct is_compile_time_checkable;  // : std::true_type {};
 
-// Default matching mechanism.
+template <typename LTag, typename RTag>
+struct is_compile_time_checkable<FrameName<LTag>, FrameName<RTag>>
+    : std::true_type {};
+
+template <>
+struct is_compile_time_checkable<RuntimeFrameName, RuntimeFrameName>
+    : std::false_type {};
+
+template <typename LhsFrameName>
+struct is_compile_time_checkable<LhsFrameName, RuntimeFrameName>
+    : std::false_type {};
+
+template <typename RhsFrameName>
+struct is_compile_time_checkable<RuntimeFrameName, RhsFrameName>
+    : std::false_type {};
+
 template <typename L, typename R>
-struct FramesMatchImpl {
-  constexpr bool operator()(L const& l, R const& r) {
-    return CheckFramesMatch(l, r);
-  }
+constexpr bool is_compile_time_checkable_v =
+    is_compile_time_checkable<std::decay_t<L>, std::decay_t<R>>::value;
+
+template <typename L, typename R, bool CheckAtCompileTime>
+struct frame_name_equal_impl;
+
+template <typename L, typename R>
+struct frame_name_equal_impl<L, R, false> {
+  bool operator()(L const& l, R const& r) { return l.name == r.name; }
 };
 
-// Specialisation for local frames. Adds timestamp checking
-template <typename LFrameTag, typename RFrameTag>
-struct FramesMatchImpl<LocalFrame<LFrameTag>, LocalFrame<RFrameTag>> {
-  constexpr bool operator()(LocalFrame<LFrameTag> const& l,
-                            LocalFrame<RFrameTag> const& r) {
-    return l.timestamp_ == r.timestamp_ && CheckFramesMatch(l, r);
+template <typename FrameName>
+struct frame_name_equal_impl<FrameName, FrameName, true> {
+  constexpr bool operator()(FrameName const&, FrameName const&) { return true; }
+};
+
+template <typename L, typename R>
+struct frame_name_equal_impl<L, R, true> {
+  constexpr bool operator()(L const&, R const&) {
+    static_assert(std::is_same<L, R>::value, "frame mismatch");
+    return false;
   }
 };
 
 }  // namespace detail
 
 template <typename L, typename R>
-constexpr bool FramesMatch(L const& l, R const& r) {
-  return detail::FramesMatchImpl<L, R>()(l, r);
+constexpr bool frame_name_equal(L&& l, R&& r) {
+  return detail::frame_name_equal_impl<
+      L, R, detail::is_compile_time_checkable_v<L, R>>()(l, r);
 }
+
+namespace detail {
+
+template <typename L, typename R>
+struct frame_equal_impl;
+
+template <template <typename> class LhsFrameType, typename LhsFrameName,
+          template <typename> class RhsFrameType, typename RhsFrameName>
+struct frame_equal_impl<LhsFrameType<LhsFrameName>,
+                        RhsFrameType<RhsFrameName>> {
+  constexpr bool operator()(LhsFrameType<LhsFrameName> const& l,
+                            RhsFrameType<RhsFrameName> const& r) {
+    return frame_name_equal(l.name_, r.name_);
+  }
+};
+
+template <typename LhsFrameName, typename RhsFrameName>
+struct frame_equal_impl<LocalFrame<LhsFrameName>, LocalFrame<RhsFrameName>> {
+  constexpr bool operator()(LocalFrame<LhsFrameName> const& l,
+                            LocalFrame<RhsFrameName> const& r) {
+    return frame_name_equal(l.name_, r.name_) && l.timestamp() == r.timestamp();
+  }
+};
+
+} // namespace detail
+
+template <typename L, typename R>
+constexpr bool frame_equal(L const& l, R const& r) {
+  return detail::frame_equal_impl<L, R>()(l, r);
+};
 
 //------------------------------------------------------------------------------
 
@@ -378,6 +447,10 @@ Transform<LocalFrame<DestName>, LocalFrame<SrcName>> MakeTimestampedTransform(
 
 template <typename FrameName>
 Transform<LocalFrame<FrameName>, LocalFrame<FrameName>> MakeRelativeTransform(
+    FrameTimestamp dest_time, FrameTimestamp src_time);
+
+template <typename FrameName>
+Transform<LocalFrame<FrameName>, LocalFrame<FrameName>> MakeRelativeTransform(
     FrameTimestamp dest_time, FrameTimestamp src_time) {
   return Transform<LocalFrame<FrameName>, LocalFrame<FrameName>>(
       LocalFrame<FrameName>(dest_time), LocalFrame<FrameName>(src_time));
@@ -459,7 +532,8 @@ auto operator*(Transform<LDestFrame, LSrcFrame> const& l,
                Transform<RDestFrame, RSrcFrame> const& r) ->
     typename detail::TransformComposition<LDestFrame, LSrcFrame, RDestFrame,
                                           RSrcFrame>::ResultType {
-  if (!FramesMatch(l.src_frame_, r.dest_frame_)) {
+  //if (!FramesMatch(l.src_frame_, r.dest_frame_)) {
+  if (!frame_equal(l.src_frame_, r.dest_frame_)) {
     std::stringstream ss;
     ss << "Error composing " << l << " and " << r;
     throw ss.str();
@@ -479,26 +553,31 @@ auto Invert(Transform<DestFrame, SrcFrame> const& G_dest_src) {
 //------------------------------------------------------------------------------
 
 // Define some compile time frames.
-using WorldFrame = FrameName<struct WorldFrameTag>;
-template <>
-std::string const WorldFrame::name{"world"};
+DEFINE_FRAME_NAME(WorldFrame, world);
+DEFINE_FRAME_NAME(RobotFrame, robot);
 
-using RobotFrame = FrameName<struct RobotFrameTag>;
-template <>
-std::string const RobotFrame::name{"robot"};
+//using WorldFrame = FrameName<struct WorldFrameTag>;
+//template <>
+//std::string const WorldFrame::name{"world"};
+//
+//using RobotFrame = FrameName<struct RobotFrameTag>;
+//template <>
+//std::string const RobotFrame::name{"robot"};
 
 using RobotCalibrationFrame = CalibrationFrame<RobotFrame>;
 using RobotLocalFrame = LocalFrame<RobotFrame>;
 
-using CameraFrame = FrameName<struct CameraFrameTag>;
-template <>
-std::string const CameraFrame::name{"camera"};
+DEFINE_FRAME_NAME(CameraFrame, camera);
+//using CameraFrame = FrameName<struct CameraFrameTag>;
+//template <>
+//std::string const CameraFrame::name{"camera"};
 using CameraCalibrationFrame = CalibrationFrame<CameraFrame>;
 using CameraLocalFrame = LocalFrame<CameraFrame>;
 
-using LaserFrame = FrameName<struct LaserFrameTag>;
-template <>
-std::string const LaserFrame::name{"laser"};
+DEFINE_FRAME_NAME(LaserFrame, laser);
+//using LaserFrame = FrameName<struct LaserFrameTag>;
+//template <>
+//std::string const LaserFrame::name{"laser"};
 
 // Helper functions for demo output
 template <typename T1, typename T2>
@@ -516,31 +595,52 @@ void PrintTransformComposition(T1 const& t1, T2 const& t2, T3 const& t3) {
             << "\n";
 }
 
+//------------------------------------------------------------------------------
+
+template <typename T>
+struct TD;
+
+template <bool v>
+void print_constexpr() {
+  std::cout << std::boolalpha << v << std::noboolalpha << '\n';
+}
+
 int main(int argc, const char* argv[]) {
+  print_constexpr<frame_name_equal(RobotFrame(), RobotFrame())>();
+  //print_constexpr<FramesMatch(RobotFrame(), RobotFrame())>();
+
+
+  //----------------------------------------------------------------------------
+
   auto G_robot_camera_calibration =
       MakeCalibrationTransform<RobotFrame, CameraFrame>();
   auto G_laser_robot_calibration =
       MakeCalibrationTransform<LaserFrame, RobotFrame>();
   // ERROR enable_if removes this constructor if using runtime frames
-  // MakeCalibrationTransform<RuntimeCalibrationFrame, RobotCalibrationFrame>();
+//     MakeCalibrationTransform<RuntimeCalibrationFrame,
+//     RobotCalibrationFrame>();
 
   // Compose two calibration transforms
   PrintTransformComposition(G_laser_robot_calibration,
                             G_robot_camera_calibration);
 
   // Lets make a transform chain. Lets do the first transform with an easy
-  // helper function. We want both frames to be LocalFrames (have timestamps)
+  // helper function. We want both frames to be LocalFrames (have
+  // timestamps)
   // and in this case we know that it is a common Dest/Src frame _name_
-  // (RobotFrame). Therefore the only interesting information is the timestamps.
+  // (RobotFrame). Therefore the only interesting information is the
+  // timestamps.
   // The helper function constructs the frames for us and then builds the
   // transform.
   auto G_robot_t1_robot_t2 = MakeRelativeTransform<RobotFrame>(1_ft, 2_ft);
-  // Under the hood this is essentially calling the constructor with the frame
+  // Under the hood this is essentially calling the constructor with the
+  // frame
   // type LocalFrame<RobotFrame>
   auto G_robot_t2_robot_t3 =
       Transform<RobotLocalFrame, RobotLocalFrame>(2_ft, 3_ft);
   // Expanded and removing the all the typedefs and we get this monstrosity.
-  // This is why auto is awsome - otherwise this is what you'd be declaring the
+  // This is why auto is awsome - otherwise this is what you'd be declaring
+  // the
   // type as.
   auto G_robot_t3_robot_t4 = Transform<LocalFrame<FrameName<RobotFrameTag>>,
                                        LocalFrame<FrameName<RobotFrameTag>>>(
@@ -550,14 +650,18 @@ int main(int argc, const char* argv[]) {
   PrintTransformComposition(G_robot_t1_robot_t2, G_robot_t2_robot_t3,
                             G_robot_t3_robot_t4);
 
-  // Project a relative transform into a different frame using a calibration.
+  // Project a relative transform into a different frame using a
+  // calibration.
   PrintTransformComposition(Invert(G_robot_camera_calibration),
                             G_robot_t1_robot_t2, G_robot_camera_calibration);
 
   // Get new calibration frame at runtime.
-  // Note, we are making a runtime robot frame. We could use the compile time
-  // one but this shows that mixing runtime and compile time frames works fine.
-  // We have specified the type here to be expicit about it being a different
+  // Note, we are making a runtime robot frame. We could use the compile
+  // time
+  // one but this shows that mixing runtime and compile time frames works
+  // fine.
+  // We have specified the type here to be expicit about it being a
+  // different
   // type for the same frame string, however, we can remove the heavy syntax
   // using the _frame suffix, shown for the second parameter.
   auto G_robot_ins_calibration =
@@ -566,7 +670,7 @@ int main(int argc, const char* argv[]) {
   PrintTransformComposition(G_laser_robot_calibration, G_robot_ins_calibration);
 
   // Composition of bad compile time frames.
-  // G_robot_camera_calibration * G_laser_robot_calibration;  // ERROR
+  //G_robot_camera_calibration * G_laser_robot_calibration;  // ERROR
 
   // Compisition of bad frame names, checked at runtime.
   try {
@@ -604,27 +708,31 @@ int main(int argc, const char* argv[]) {
 
   // ERROR Cannot create a transform where one frame is Calibration and the
   // other is not.
-//    Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
-//        RuntimeCalibrationFrame("robot"_frame),
-//        RuntimeLocalFrame("laser"_frame,1_ft));
+//        Transform<RuntimeCalibrationFrame, RuntimeLocalFrame>(
+//            RuntimeCalibrationFrame("robot"_frame),
+//            RuntimeLocalFrame("laser"_frame,1_ft));
 
   // Cannot apply calibration transform to a world frame.
   // NOTE A frame name does not encode the frame type to which it will be
-  // applied (as this can be any of the three types). To prevent this at compile
-  // time would require separating frame names into external and non-external
+  // applied (as this can be any of the three types). To prevent this at
+  // compile
+  // time would require separating frame names into external and
+  // non-external
   // types. Things were already pretty ugl. I tried inheritance. That went
-  // badly. I gave up. Whilst you can create this transform, as soon as you try
-  // and compose it with anything which isn't a calibration transform it will go
+  // badly. I gave up. Whilst you can create this transform, as soon as you
+  // try
+  // and compose it with anything which isn't a calibration transform it
+  // will go
   // bang.
-//    auto G_robot_world_calibration =
-//        MakeCalibrationTransform<RobotFrame, WorldFrame>();
+//        auto G_robot_world_calibration =
+//            MakeCalibrationTransform<RobotFrame, WorldFrame>();
 //    G_robot_world_calibration* G_world_ins_t3;  // ERROR
 
   // Disabled through enable_if
-//    auto runtime_local_frame = RuntimeLocalFrame{3_ft};
-//    auto runtime_external_frame = RuntimeExternalFrame{};
-//    RuntimeExternalFrame runtime_external_frame2;
-//    auto runtime_calibration_frame = RuntimeCalibrationFrame{};
+  //      auto runtime_local_frame = RuntimeLocalFrame{3_ft};
+  //      auto runtime_external_frame = RuntimeExternalFrame{};
+  //    RuntimeExternalFrame runtime_external_frame2;
+  //    auto runtime_calibration_frame = RuntimeCalibrationFrame{};
 
   return 0;
 }
