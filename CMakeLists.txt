@@ -5,7 +5,7 @@ project(transform_lite)
 set(CMAKE_CXX_FLAGS "-stdlib=libc++")
 add_definitions("-std=c++14")
 
-set(cmake_build_type DEBUG)
+#set(cmake_build_type DEBUG)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Boost REQUIRED)
@@ -44,6 +44,7 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
   include_directories("${gtest_SOURCE_DIR}/include")
 endif()
 
+enable_testing()
 
 add_subdirectory(poena)
 add_subdirectory(constexprstring)

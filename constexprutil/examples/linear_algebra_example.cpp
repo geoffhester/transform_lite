@@ -49,6 +49,11 @@ int main() {
   constexpr ConstexprMatrix<double,3,3> c{1,0,0,0,1,0,0,0,1};
   constexpr ConstexprMatrix<double,3,1> d{1,2,3};
 
+  std::cout << sub2ind(3,3,0,2) << '\n';
+  Identity<double,3> f;
+  std::cout << f << '\n';
+
+
   constexpr auto e = c*d;
   std::cout << e << '\n';
 

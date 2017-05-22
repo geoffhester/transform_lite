@@ -11,12 +11,41 @@
 namespace constexprutil {
 namespace linearalgebra {
 
+constexpr std::size_t row_index(std::size_t num_rows, std::size_t num_cols,
+                                std::size_t index) {
+  return index % num_rows;
+}
+
+constexpr std::size_t col_index(std::size_t num_rows, std::size_t num_cols,
+                                std::size_t index) {
+  return index / num_rows;
+}
+
+constexpr std::size_t sub2ind(std::size_t num_rows, std::size_t num_cols,
+                              std::size_t row_index, std::size_t col_index) {
+  return col_index * num_rows + row_index;
+}
+
 template <typename T, std::size_t Rows, std::size_t Cols>
 struct ConstexprMatrix {
   static constexpr std::size_t rows = Rows;
   static constexpr std::size_t cols = Cols;
   static constexpr std::size_t size = Rows * Cols;
   std::array<T, size> data;
+};
+
+template <typename T, std::size_t Dims>
+struct Identity : ConstexprMatrix<T, Dims, Dims> {
+  static constexpr std::size_t rows = Dims;
+  static constexpr std::size_t cols = Dims;
+  static constexpr std::size_t size = Dims * Dims;
+  std::array<T, size> data;
+
+  Identity() {
+    for (std::size_t i = 0; i < Dims; ++i) {
+      data[sub2ind(rows,cols,i,i)] = T(1);
+    }
+  }
 };
 
 template <typename T, std::size_t N>
@@ -46,15 +75,7 @@ constexpr auto vector_multiply(std::array<T1, N1> const& lhs,
                               std::make_index_sequence<N2>());
 }
 
-constexpr std::size_t row_index(std::size_t num_rows, std::size_t num_cols,
-                                std::size_t index) {
-  return index % num_rows;
-}
 
-constexpr std::size_t col_index(std::size_t num_rows, std::size_t num_cols,
-                                std::size_t index) {
-  return index / num_rows;
-}
 
 template <typename T, T Stride, typename IS>
 struct strided_index_sequence_impl;
