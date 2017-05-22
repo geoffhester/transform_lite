@@ -1,11 +1,12 @@
+#include "gtest/gtest.h"
+
+#include <algorithm>
 #include <cmath>
-#include <iomanip>
-#include <iostream>
 #include <vector>
 
 #include "constexprutil/math/trigonometry.h"
 
-int main() {
+std::vector<double> positive_pi_to_negative_pi_thetas() {
   std::vector<double const> const positive_fractions = {
       0.0,       1.0 / 6.0, 1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0,
       2.0 / 3.0, 3.0 / 4.0, 5.0 / 6.0, 1.0};
@@ -23,28 +24,33 @@ int main() {
   std::transform(std::begin(all_fractions), std::end(all_fractions),
                  std::back_inserter(thetas), [](auto x) { return M_PI * x; });
 
-  for (auto x : thetas) {
-    std::cout << std::setw(11) << std::setprecision(5) << x << " ";
-  }
-  std::cout << "\n\n";
-
-  for(auto x : thetas) {
-    std::cout << std::setw(11) << std::setprecision(5) << constexprutil::math::my_sin(x) << " ";
-  }
-  std::cout << '\n';
-  for(auto x : thetas) {
-    std::cout << std::setw(11) << std::setprecision(5) << sin(x) << " ";
-  }
-  std::cout << "\n\n";
-
-  for(auto x : thetas) {
-    std::cout << std::setw(11) << std::setprecision(5) << constexprutil::math::my_cos(x) << " ";
-  }
-  std::cout << '\n';
-  for(auto x : thetas) {
-    std::cout << std::setw(11) << std::setprecision(5) << cos(x) << " ";
-  }
-  std::cout << '\n';
-
-  return 0;
+  return thetas;
 }
+
+TEST(SinTest, MatchesCoreLibrary) {
+  std::vector<double> const thetas = positive_pi_to_negative_pi_thetas();
+
+  using constexprutil::math::my_sin;
+
+  for(auto& x : thetas) {
+    ASSERT_NEAR(my_sin(x), sin(x), 1e-4);
+  }
+}
+
+TEST(CosTest, MatchesCoreLibrary) {
+  std::vector<double> const thetas = positive_pi_to_negative_pi_thetas();
+
+  using constexprutil::math::my_cos;
+
+  for(auto& x : thetas) {
+    ASSERT_NEAR(my_cos(x), cos(x), 1e-4);
+  }
+}
+
+int main(int argc, char **argv)
+{
+  ::testing::InitGoogleTest(&argc, argv);
+  int ret = RUN_ALL_TESTS();
+  return ret;
+}
+

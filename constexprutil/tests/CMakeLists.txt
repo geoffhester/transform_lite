@@ -1,0 +1,3 @@
+add_executable(trigonometry_tests trigonometry_tests.cpp)
+target_link_libraries(trigonometry_tests constexprutil gtest_main)
+add_test(NAME trigonometry_test COMMAND trigonometry_tests)

@@ -25,17 +25,15 @@ constexpr double my_sin(double x) {
   if (0.0 <= x && x <= M_PI_2) {
     return my_sin_impl(x, x, 2, num_iter);
   }
-  if (M_PI_2 < x ) { //&& x <= M_PI) {
+  if (M_PI_2 < x ) {
     return my_sin(M_PI - x);
   }
-  if (/*-M_PI <= x &&*/ x < 0.0) {
-    return -my_sin(-x);
-  }
-  throw std::domain_error("");
+  // x < 0.0
+  return -my_sin(-x);
 }
 
 constexpr double my_cos(double x) {
-  return my_sin(x - M_PI_2);
+  return my_sin(x + M_PI_2);
 }
 
 }  // namespace math
