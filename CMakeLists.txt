@@ -15,5 +15,6 @@ set_property(TARGET boost PROPERTY
 
 add_subdirectory(poena)
 add_subdirectory(constexprstring)
+add_subdirectory(constexprutil)
 add_subdirectory(transformlite)
 add_subdirectory(examples)

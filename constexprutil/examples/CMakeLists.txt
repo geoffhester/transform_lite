@@ -1,0 +1,5 @@
+add_executable(trigonometry_examples trigonometry_examples.cpp)
+target_link_libraries(trigonometry_examples constexprutil)
+
+add_executable(linear_algebra_example linear_algebra_example.cpp)
+target_link_libraries(linear_algebra_example constexprutil)
