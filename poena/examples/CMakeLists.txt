@@ -1,0 +1,5 @@
+add_executable(poena_examples poena_examples.cpp)
+target_link_libraries(poena_examples poena)
+
+add_executable(poena_graph_examples poena_graph_examples.cpp)
+target_link_libraries(poena_graph_examples poena)

@@ -2,7 +2,7 @@
 
 #include <boost/type_index.hpp>
 
-#include "transform_lite.h"
+#include "transformlite/transform_lite.h"
 
 //------------------------------------------------------------------------------
 

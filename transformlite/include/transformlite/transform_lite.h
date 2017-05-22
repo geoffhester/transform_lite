@@ -8,7 +8,7 @@
 
 #include <boost/utility/string_view.hpp>
 
-#include "constexpr_string.h"
+#include "constexprstring/constexpr_string.h"
 
 // Frame timestamp is just an int (POD)
 struct FrameTimestamp {

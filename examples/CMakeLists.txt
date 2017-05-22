@@ -1,0 +1,2 @@
+add_executable(transform_demo src/main.cc)
+target_link_libraries(transform_demo transformlite)
