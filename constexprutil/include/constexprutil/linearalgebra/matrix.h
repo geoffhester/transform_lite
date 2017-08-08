@@ -28,22 +28,34 @@ constexpr std::size_t sub2ind(std::size_t num_rows, std::size_t num_cols,
 
 template <typename T, std::size_t Rows, std::size_t Cols>
 struct ConstexprMatrix {
+ public:
   static constexpr std::size_t rows = Rows;
   static constexpr std::size_t cols = Cols;
   static constexpr std::size_t size = Rows * Cols;
   std::array<T, size> data;
 };
 
+template<typename T, std::size_t Dims>
+constexpr std::array<T, Dims*Dims> make_eye_array() {
+  std::array<T, Dims*Dims> result;
+  for (std::size_t i = 0; i < Dims; ++i) {
+    result[sub2ind(Dims,Dims,i,i)] = T(1);
+  }
+  return result;
+}
+
 template <typename T, std::size_t Dims>
-struct Identity : ConstexprMatrix<T, Dims, Dims> {
-  static constexpr std::size_t rows = Dims;
-  static constexpr std::size_t cols = Dims;
-  static constexpr std::size_t size = Dims * Dims;
-  std::array<T, size> data;
+struct Identity : public ConstexprMatrix<T, Dims, Dims> {
+  using ConstexprMatrix<T, Dims, Dims>::rows;
+  using ConstexprMatrix<T, Dims, Dims>::cols;
+  using ConstexprMatrix<T, Dims, Dims>::size;
+
+  using ConstexprMatrix<T, Dims, Dims>::data;
 
   Identity() {
+    this->data.fill(0);
     for (std::size_t i = 0; i < Dims; ++i) {
-      data[sub2ind(rows,cols,i,i)] = T(1);
+      this->data.at(sub2ind(Dims,Dims,i,i)) = T(1);
     }
   }
 };
@@ -148,6 +160,14 @@ constexpr auto operator*(ConstexprMatrix<LhsT, LhsRows, LhsCols> const& lhs,
   return ConstexprMatrix<typename std::common_type<LhsT, RhsT>::type, LhsRows,
                          RhsCols>{
       mul_helper(lhs, rhs, std::make_index_sequence<LhsRows * RhsCols>())};
+}
+
+template <typename LhsT, std::size_t LhsRows, std::size_t LhsCols,
+          typename RhsT, std::size_t RhsRows, std::size_t RhsCols>
+constexpr bool operator==(ConstexprMatrix<LhsT, LhsRows, LhsCols> const& lhs,
+                          ConstexprMatrix<RhsT, RhsRows, RhsCols> const& rhs) {
+  static_assert(LhsRows == RhsRows && LhsCols == RhsCols, "Matrix dimension mismatch");
+  return lhs.data == rhs.data;
 }
 
 template <typename T, std::size_t Rows, std::size_t Cols>
