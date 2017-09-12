@@ -59,9 +59,46 @@ void print_constexpr() {
   std::cout << std::boolalpha << v << std::noboolalpha << '\n';
 }
 
+//------------------------------------------------------------------------------
+// Detector Idiom
+template<class...>
+using void_t = void;
+
+struct nonesuch {
+  nonesuch() = delete;
+  ~nonesuch() = delete;
+  nonesuch(nonesuch const&) = delete;
+  void operator=(nonesuch const&) = delete;
+};
+
+template<typename Default, typename AlwaysVoid, template<class...> class Op, typename... Args>
+struct detector_impl {
+  using value_t = std::false_type;
+  using type = Default;
+};
+
+template<typename Default, template<class...> class Op, typename... Args>
+struct detector_impl<Default, void_t<Op<Args...>>, Op, Args...> {
+  using value_t = std::true_type;
+  using type = Op<Args...>;
+};
+
+template<template<class...> class Op, typename... Args>
+using is_detected = typename detector_impl<nonesuch, void, Op, Args...>::value_t;
+
+template<template<class...> class Op, typename... Args>
+using detected_t = typename detector_impl<nonesuch, void, Op, Args...>::type;
+
+//------------------------------------------------------------------------------
+
+
+template<typename T1, typename T2>
+using make_calibration_res = decltype(Transform<T1,T2>());
+
 int main(int argc, const char* argv[]) {
   print_constexpr<frame_name_equal(RobotFrame(), RobotFrame())>();
   //print_constexpr<FramesMatch(RobotFrame(), RobotFrame())>();
+
 
 
   //----------------------------------------------------------------------------
@@ -73,6 +110,8 @@ int main(int argc, const char* argv[]) {
   // ERROR enable_if removes this constructor if using runtime frames
 //     MakeCalibrationTransform<RuntimeCalibrationFrame,
 //     RobotCalibrationFrame>();
+
+  std::cout << is_detected<make_calibration_res,RuntimeCalibrationFrame,RobotCalibrationFrame>::value << '\n';
 
   // Compose two calibration transforms
   PrintTransformComposition(G_laser_robot_calibration,
