@@ -2,10 +2,8 @@ cmake_minimum_required(VERSION 3.3)
 
 project(transform_lite)
 
-set(CMAKE_CXX_FLAGS "-stdlib=libc++")
-add_definitions("-std=c++14")
+set(CMAKE_CXX_STANDARD 14)
 
-#set(cmake_build_type DEBUG)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Boost REQUIRED)
